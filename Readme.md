@@ -27,9 +27,7 @@ raw fastq (R1 = barcode+UMI chain, R2 = cDNA insert)
     highlight_illumina_reads.py  -> colored visual inspection of real R1
                                    reads (which connector/barcode segment
                                    is where), for spot-checking
-    highlight_nanopore_reads.py  -> same, adapted for long-read/indel-
-                                   tolerant data if ever applicable
-    |
+     |
     v
 [3] alignment + gene assignment + UMI-collapsed count matrix
     align_and_tag.sh       -> minimap2 alignment of the trimmed insert
