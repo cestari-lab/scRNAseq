@@ -1,4 +1,4 @@
-# scRNA-seq Analysis Pipeline (Preliminary, Poly-T Capture)
+# scRNA-seq Analysis Pipeline (Poly-T Capture)
 
 Analysis pipeline for split-and-pool combinatorial-barcoded scRNA-seq data
 (bead-based capture, poly-dT priming, TSO/template-switching chemistry).
