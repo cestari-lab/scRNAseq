@@ -2,6 +2,7 @@
 # Author: Lissa Cruz-Saavedra
 # Date: 24-09-2026
 
+
 """
 quantify_scrna_toehold_arrangements.py
 
@@ -9,7 +10,7 @@ Quantifies barcode chain completeness for the scRNA-seq toehold/linker
 scaffold design: SCAFFOLD_TAIL -> BC1_TOEHOLD -> [BC1] -> BC1_LINKERA ->
 BC2_TOEHOLD -> [BC2] -> BC2_LINKERB -> BC3_TOEHOLD -> [BC3] -> polyT/insert.
 
-This scaffold is strictly sequential/ligated in order, so
+The scaffold is strictly sequential/ligated in order, so
 reads are categorized by HOW FAR the chain was successfully found, not by
 which specific round is missing:
 
@@ -45,6 +46,9 @@ BC3_TOEHOLD   = "CTGACT"
 BC1_LEN_RANGE = (7, 12)
 BC2_LEN_RANGE = (7, 13)
 BC3_LEN_RANGE = (6, 12)
+UMI_LEN = 10                # fixed UMI between BC3 and poly-T -- was missing
+                            # from the polyT search offset in an earlier
+                            # version, misplacing chain_end by up to 10bp
 POLYT_CHECK_LEN = 8
 POLYT_MIN_COUNT = 6
 
@@ -124,7 +128,7 @@ def classify_read(seq, max_mm=1):
 
     best_len, best_score = None, -1
     for L in range(BC3_LEN_RANGE[0], BC3_LEN_RANGE[1] + 1):
-        cand_end = bc3_start + L
+        cand_end = bc3_start + L + UMI_LEN   # skip past the UMI before checking polyT
         score = polyT_score(seq, cand_end)
         if score > best_score:
             best_score, best_len = score, L
@@ -133,9 +137,10 @@ def classify_read(seq, max_mm=1):
         return "stalled_after_BC2", {"i0": i0, "i1": i1, "i1b": i1b, "i2": i2,
                                        "i2b": i2b, "bc1": bc1, "bc2": bc2}
     bc3 = seq[bc3_start:bc3_start + best_len]
-    chain_end = bc3_start + best_len
+    umi = seq[bc3_start + best_len: bc3_start + best_len + UMI_LEN]
+    chain_end = bc3_start + best_len + UMI_LEN
     ann = {"i0": i0, "i1": i1, "i1b": i1b, "i2": i2, "i2b": i2b, "i3": i3,
-           "bc1": bc1, "bc2": bc2, "bc3": bc3, "chain_end": chain_end,
+           "bc1": bc1, "bc2": bc2, "bc3": bc3, "umi": umi, "chain_end": chain_end,
            "polyT_score": best_score}
 
     if best_score >= POLYT_MIN_COUNT:
