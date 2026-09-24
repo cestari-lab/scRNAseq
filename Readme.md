@@ -1,4 +1,4 @@
-# scRNA-seq Analysis Pipeline (Poly-T Capture)
+# scRNA-seq Analysis Pipeline (Preliminary, Poly-T Capture)
 
 Analysis pipeline for split-and-pool combinatorial-barcoded scRNA-seq data
 (bead-based capture, poly-dT priming, TSO/template-switching chemistry).
@@ -31,9 +31,13 @@ raw fastq (R1 = barcode+UMI chain, R2 = cDNA insert)
                                    tolerant data if ever applicable
     |
     v
-[3] alignment + count matrix
-    (external: aligner + featureCounts -- not included here, see lab's
-    existing mapping scripts)
+[3] alignment + gene assignment + UMI-collapsed count matrix
+    align_and_tag.sh       -> minimap2 alignment of the trimmed insert
+                               fastq, preserving CB/UR tags as real BAM
+                               tags (via minimap2 -y)
+    (run featureCounts -R BAM yourself, see Usage below)
+    build_count_matrix.py  -> UMI-deduplicated cell x gene count matrix
+                               from the featureCounts-tagged BAM
     |
     v
 [4] per-cell QC
@@ -66,10 +70,18 @@ python3 extract_scrna_toehold_barcodes.py --r1 R1.fastq.gz --out-prefix sample1
 python3 quantify_scrna_toehold_arrangements.py --r1 R1.fastq.gz \
     --stats-out sample1_stats.json --examples-out sample1_examples.json
 
-# 2. (after alignment + featureCounts, external) per-cell QC
-python3 kdna_fraction.py <mapped.bam> kdna_fraction.csv
-python3 qc_flags.py cell_by_gene_counts.csv qc_output/ kdna_fraction.csv
+# 2. Align, preserving CB/UR tags; assign genes; build the UMI-deduplicated matrix
+./align_and_tag.sh genome.fa sample1.tagged_insert.fastq.gz sample1_aligned
+featureCounts -a annotation.gtf -o sample1_fc.txt -R BAM sample1_aligned.sorted.bam
+python3 build_count_matrix.py sample1_aligned.sorted.bam.featureCounts.bam \
+    sample1_cell_by_gene_counts.csv
 
-# 3. Clustering / downstream analysis
-python3 scanpy_analysis.py cell_by_gene_counts.csv scanpy_output/
+# 3. Per-cell QC
+python3 kdna_fraction.py sample1_aligned.sorted.bam kdna_fraction.csv
+python3 qc_flags.py sample1_cell_by_gene_counts.csv qc_output/ kdna_fraction.csv
+
+# 4. Clustering / downstream analysis
+python3 scanpy_analysis.py sample1_cell_by_gene_counts.csv scanpy_output/
 ```
+
+Requires (system packages, e.g. `apt install`): `minimap2`, `samtools`, `subread` (for `featureCounts`).
