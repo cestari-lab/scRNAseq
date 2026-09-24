@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # Author: Lissa Cruz-Saavedra
 # Date: 24-10-2026
+
 """
 extract_scrna_toehold_barcodes.py
 
 Extracts the scaffold -> BC1 -> BC2 -> BC3 -> polyT structure from scRNA-seq
-reads built on the toehold/linker bead-oligo design (NOT the GATC/Sau3AI
-combinatorial scheme used elsewhere in this project for Hi-C -- these are
-two different barcode designs, confirmed empirically on FV74MG data).
+reads built on the toehold/linker bead-oligo design.
 
 Structure (5'->3'):
     [P5 adapter] SCAFFOLD_TAIL [BC1] BC1_LINKERA [BC2] BC2_LINKERB [BC3] [polyT/insert]
@@ -15,8 +14,7 @@ Structure (5'->3'):
 Anchors are matched with up to --max-anchor-mismatch mismatches (default 1)
 at every position in a search window, not just exact substring search --
 important since real reads have sequencing errors and exact-only matching
-undercounts real structure (as seen when a quick exact-only check found
-~14-19% of reads with structure; this tolerant version should find more).
+undercounts real structure.
 
 If --plates is given (an .xlsx with BC1/BC2/BC3 well sequences, one sheet
 per round), extracted barcodes are matched against the real well sequences
@@ -29,7 +27,7 @@ Usage:
     python3 extract_scrna_toehold_barcodes.py \
         --r1 ScRNA1_R1.fastq.gz \
         --out-prefix scrna_toehold \
-        [--plates Primers_singel_cell.xlsx] \
+        [--plates Primers_singel_cell_COMPLETE.xlsx] \
         [--n-reads 2000000] [--max-anchor-mismatch 1] [--min-insert-len 20]
 """
 import argparse
@@ -50,10 +48,14 @@ BC3_LEN_RANGE = (6, 12)    # BC3 is ALSO variable length (was wrongly fixed at 9
                             # in an earlier version -- that misplaced chain_end
                             # inside the adapter for most reads). Correct length
                             # is chosen as whichever gives the best poly-T score
-                            # immediately after it.
+                            # immediately after the UMI that follows it.
+UMI_LEN = 10                # fixed-length UMI between BC3 and poly-T -- was
+                            # MISSING entirely in an earlier version, which both
+                            # skipped UMI tagging AND misplaced chain_end by up
+                            # to 10bp (leftover UMI bases bled into the "insert")
 POLYT_CHECK_LEN = 8
-POLYT_MIN_COUNT = 6         # require >=6/8 T's right after BC3 to call it real
-                            # poly-A capture, not just barcode structure
+POLYT_MIN_COUNT = 6         # require >=6/8 T's right after BC3+UMI to call it
+                            # real poly-A capture, not just barcode structure
 
 COMP = {"A": "T", "T": "A", "C": "G", "G": "C", "N": "N"}
 
@@ -134,7 +136,7 @@ def extract_chain(seq, max_mm=1, require_polyA=True):
 
     best_len, best_score = None, -1
     for L in range(BC3_LEN_RANGE[0], BC3_LEN_RANGE[1] + 1):
-        cand_end = bc3_start + L
+        cand_end = bc3_start + L + UMI_LEN   # skip past the UMI before checking polyT
         score = polyT_score(seq, cand_end)
         if score > best_score:
             best_score, best_len = score, L
@@ -144,11 +146,12 @@ def extract_chain(seq, max_mm=1, require_polyA=True):
     if best_len is None:
         return None
     bc3 = seq[bc3_start:bc3_start + best_len]
+    umi = seq[bc3_start + best_len: bc3_start + best_len + UMI_LEN]
 
     return {
-        "bc1": bc1, "bc2": bc2, "bc3": bc3,
+        "bc1": bc1, "bc2": bc2, "bc3": bc3, "umi": umi,
         "polyT_score": best_score,
-        "chain_end": bc3_start + best_len,   # insert/polyT starts here
+        "chain_end": bc3_start + best_len + UMI_LEN,   # insert/polyT starts here
     }
 
 
@@ -247,7 +250,9 @@ def main():
         insert_trimmed = insert[j:]
         if len(insert_trimmed) >= args.min_insert_len:
             n_insert_kept += 1
-            out_fastq.write(f"@read{total} CB:Z:{cell_id}\n{insert_trimmed}\n+\n{'I'*len(insert_trimmed)}\n")
+            # tags must be TAB-separated (not space) for minimap2 -y to split
+            # them into two distinct BAM tags rather than gluing them into one
+            out_fastq.write(f"@read{total}\tCB:Z:{cell_id}\tUR:Z:{chain['umi']}\n{insert_trimmed}\n+\n{'I'*len(insert_trimmed)}\n")
 
         if total % 5_000_000 == 0:
             print(f"  ...{total:,} reads scanned", flush=True)
