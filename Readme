@@ -1,0 +1,75 @@
+# scRNA-seq Analysis Pipeline (Poly-T Capture)
+
+Analysis pipeline for split-and-pool combinatorial-barcoded scRNA-seq data
+(bead-based capture, poly-dT priming, TSO/template-switching chemistry).
+
+## Pipeline stages
+
+```
+raw fastq (R1 = barcode+UMI chain, R2 = cDNA insert)
+    |
+    v
+[1] barcode/UMI extraction + arrangement quantification
+    extract_scrna_toehold_barcodes.py   -> tagged, barcode-trimmed R1
+                                            insert fastq + per-barcode stats
+    quantify_scrna_toehold_arrangements.py -> full funnel: how many reads
+                                            reach each stage of the
+                                            scaffold->BC1->BC2->BC3->UMI->
+                                            polyA chain, and how many show
+                                            a confirmed real poly-A tail
+                                            vs. barcode-complete-but-empty
+    |
+    v
+[2] QC / diagnostics
+    check_r2_for_real_mrna.py  -> tests whether R2 shows real mRNA/mapping
+                                   evidence for reads R1 alone couldn't
+                                   confirm (e.g. barcode-complete-no-polyA)
+    highlight_illumina_reads.py  -> colored visual inspection of real R1
+                                   reads (which connector/barcode segment
+                                   is where), for spot-checking
+    highlight_nanopore_reads.py  -> same, adapted for long-read/indel-
+                                   tolerant data if ever applicable
+    |
+    v
+[3] alignment + count matrix
+    (external: aligner + featureCounts -- not included here, see lab's
+    existing mapping scripts)
+    |
+    v
+[4] per-cell QC
+    kdna_fraction.py  -> kinetoplast DNA (kDNA) read fraction per cell,
+                          computed by genomic position on the maxicircle
+                          contig (no gene model exists there)
+    qc_flags.py        -> Scrublet doublet scores + kDNA-based viability
+                          flag + (caveated) tubulin signal, merged into
+                          one qc_flags.csv
+    |
+    v
+[5] downstream analysis
+    scanpy_analysis.py  -> cell/gene filtering, normalization, HVG
+                          selection, PCA, Leiden clustering, UMAP,
+                          marker-gene visualization, depth-confound check,
+                          per-cluster marker genes (Wilcoxon)
+```
+
+## Requirements
+
+```bash
+pip install --user pandas numpy scanpy leidenalg igraph scrublet pysam matplotlib edlib
+```
+
+## Usage
+
+```bash
+# 1. Extract barcodes/UMI, trim R1 to the real insert, quantify completeness
+python3 extract_scrna_toehold_barcodes.py --r1 R1.fastq.gz --out-prefix sample1
+python3 quantify_scrna_toehold_arrangements.py --r1 R1.fastq.gz \
+    --stats-out sample1_stats.json --examples-out sample1_examples.json
+
+# 2. (after alignment + featureCounts, external) per-cell QC
+python3 kdna_fraction.py <mapped.bam> kdna_fraction.csv
+python3 qc_flags.py cell_by_gene_counts.csv qc_output/ kdna_fraction.csv
+
+# 3. Clustering / downstream analysis
+python3 scanpy_analysis.py cell_by_gene_counts.csv scanpy_output/
+```
