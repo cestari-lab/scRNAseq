@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Author: Lissa Cruz-Saavedra
+# Date: 24-09-2026
+
 """
 Per-cell kDNA (maxicircle) fraction - a T. brucei equivalent of "% mitochondrial"
 viability QC, computed directly by genomic position since no gene is annotated
